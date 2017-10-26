@@ -16,100 +16,121 @@ const initialStateJS = {
 
 const state = State.fromJSON(initialStateJS);
 
-const changeAfterAdd = state.change()
+const addition = state.change()
     .insertNodeByKey(state.document.key, 1, Block.create({ type: 'text', data: { name: 'added' }}));
 
-const key = changeAfterAdd.state.document.nodes.get(1).key;
-
-const changeAfterRemoval = changeAfterAdd.state.change()
-    .removeNodeByKey(key);
+const removal = addition.state.change()
+    .removeNodeByKey(addition.state.document.nodes.get(1).key);
 
 
 it('adds node', () => {
-    const addOperationChange = state.change().applyOperations(transformOperations(changeAfterAdd))
+    const operations = transform(addition);
 
-    expect(addOperationChange.state.toJS().document.nodes[0].data).toEqual({ name: 'initial' } )
-    expect(addOperationChange.state.toJS().document.nodes[1].data).toEqual({ name: 'added' } )
-    expect(addOperationChange).toEqual(changeAfterAdd)
+    const operationsAddition = state.change().applyOperations(operations);
+
+    expect(operationsAddition.state.toJS().document.nodes[0].data).toEqual({ name: 'initial' } );
+    expect(operationsAddition.state.toJS().document.nodes[1].data).toEqual({ name: 'added' } );
+    expect(operationsAddition).toEqual(addition);
 
 });
 
 it('removes node', () => {
-    const removeOperationChange = changeAfterAdd.state.change().applyOperations(transformOperations(changeAfterRemoval))
-    
-    expect(removeOperationChange.state.toJS().document.nodes.length).toEqual(1)
-    expect(removeOperationChange.state.toJS().document.nodes[0].data).toEqual({ name: 'initial' } )
-    expect(removeOperationChange.state.toJS()).toEqual(state.toJS())
+    const operations = transform(removal);
+
+    const operationsRemoval = addition.state.change().applyOperations(operations);
+
+    expect(operationsRemoval.state.toJS().document.nodes.length).toEqual(1);
+    expect(operationsRemoval.state.toJS().document.nodes[0].data).toEqual({ name: 'initial' } );
+    expect(operationsRemoval.state.toJS()).toEqual(state.toJS());
 });
 
 it('does not matter the order of operations', () => {
-    const addThenRemove  = state.change().applyOperations([...transformOperations(changeAfterAdd), ...transformOperations(changeAfterRemoval)])
+    const addThenRemove  = state.change().applyOperations([...transform(addition), ...transform(removal)]);
 
-    const removeThenAdd = state.change().applyOperations([...transformOperations(changeAfterRemoval), ...transformOperations(changeAfterAdd) ])
+    const removeThenAdd = state.change().applyOperations([...transform(removal), ...transform(addition) ]);
 
-    expect(addThenRemove.state.toJS()).toEqual(removeThenAdd.state.toJS())
-    
-})
+    expect(addThenRemove.state.toJS()).toEqual(removeThenAdd.state.toJS());
+});
 
 it('slate blocks has default node with kind text and leaves', () => {
 
-})
+});
 
 it('transforms an insert_node operation', () => {
-    const slateOperation = { 
+    const slateOperation = {
         type: 'insert_node',
         path: [ 1 ],
-        node: { 'kind': 'block', "data": { "name": "added" }, "isVoid": false, "nodes": [], "type": "text" } 
-    }
-
-
+        node: { 'kind': 'block', "data": { "name": "added" }, "isVoid": false, "nodes": [], "type": "text" }
+    };
 
     const transformedOperation = {
         p: [1],
         li: slateOperation.node
-    }
+    };
 
-    expect(transformOperations({ operations: [ slateOperation ] })).toEqual([transformedOperation])
+    expect(toZeroJSON({ operation: slateOperation })).toEqual(transformedOperation)
 
-})
+});
 
 it('transforms an remove_node operation', () => {
-    const slateOperation = { 
+    const slateOperation = {
         type: 'remove_node',
         path: [ 1 ],
-        node: { 'kind': 'block', "data": { "name": "added" }, "isVoid": false, "nodes": [], "type": "text" } 
-    }
+        node: { 'kind': 'block', "data": { "name": "added" }, "isVoid": false, "nodes": [], "type": "text" },
+    };
 
 
 
     const transformedOperation = {
         p: [1],
         ld: slateOperation.node
-    }
-
-    expect(transformOperations({ operations: [ slateOperation ] })).toEqual([transformedOperation])
-})
-
-function transformOperations({ state, operations }) {
-    console.log(operations)
-    const map = {
-        remove_node: 'ld',
-        insert_node: 'li'
     };
-    const transformedOperations = operations.map(operation => {
 
-        return {
-            p: operation.path,
-            [map[operation.type]]: operation.node
+    expect(toZeroJSON({ operation: slateOperation })).toEqual(transformedOperation)
+});
+
+const map = {
+    remove_node: 'ld',
+    insert_node: 'li'
+};
+
+const inverseMap = {};
+
+Object.keys(map).forEach(key => {
+    inverseMap[map[key]] = key;
+});
+
+function transform(change) {
+    const zeroJson = change.operations.map(operation => toZeroJSON({operation}));
+
+    return zeroJson.map(op => toSlateOperations(op));
+}
+
+function toZeroJSON({ operation }) {
+    return {
+        p: operation.path,
+        [map[operation.type]]: operation.node,
+    }
+}
+
+function toSlateOperations(operation) {
+    const slateOp = {
+        path: operation.p,
+    };
+
+    Object.keys(inverseMap).forEach(key => {
+        const node = operation[key];
+        if(node !== undefined) {
+            slateOp['node'] = node;
+            slateOp['type'] = inverseMap[key];
         }
     });
-    //some logic
-    return transformedOperations;
+    return slateOp;
 }
 
 
 /**
  * keys need to be unique across clients. can be done with uuids but prob not sustainable for character level changes
- * 
+ *
  * using json0 operational transforms are O(n^2) so prob not scalable for character level changes or even large numbers of blocks
  */
