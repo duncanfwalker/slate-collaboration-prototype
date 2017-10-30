@@ -1,7 +1,19 @@
 import React from 'react';
-import ReactDOM from 'react-dom';
-import App from './App';
-import { State, Change, Block } from 'slate';
+import { Block, Change, State } from 'slate';
+import ShareDB from 'sharedb';
+const backend = new ShareDB();
+
+
+function createDoc(state) {
+    return new Promise(resolve => {
+        const connection = backend.connect();
+        const doc = connection.get('articles', 'article1');
+        doc.fetch(function (err) {
+            if (err) throw err;
+            doc.create(state, () => resolve(doc));
+        });
+    })
+}
 
 const initialNode = {  kind: 'block', type: 'text', data: { name: 'initial'} };
 const initialNode2 = {  kind: 'block', type: 'text', data: { name: 'second node'} };
@@ -23,36 +35,41 @@ const removal = addition.state.change()
     .removeNodeByKey(addition.state.document.nodes.get(1).key);
 
 
-const transformer = change => {
-    const zeroJson = change.operations.map(operation => toZeroJSON({operation}));
+const transformer = doc => change => {
+    return new Promise((resolve, reject) => {
+        doc.on('op', (ops) => resolve(ops.map(toSlateOperations)));
+        doc.on('error', reject);
 
-    const transformed = zeroJson.map(op => toSlateOperations(op));
-    return Promise.resolve(transformed);
+        const zeroJsonOps = change.operations.map(operation => toZeroJSON({ operation }));
+        doc.submitOp(zeroJsonOps, reject);
+    });
 };
 
+
 let transform;
-
-
 beforeEach(() => {
-    transform = transformer;
+    const jsState = state.toJS();
+    return createDoc(jsState)
+        .then((doc) => {
+            transform = transformer(doc);
+        });
 });
 
 it('adds node', () => {
     return transform(addition)
-        .then(operations => {
-            const operationsAddition = state.change().applyOperations(operations);
+        .then(transformed => {
+            const operationsAddition = state.change().applyOperations(transformed);
 
-            expect(operationsAddition.state.toJS().document.nodes[0].data).toEqual({ name: 'initial' } );
-            expect(operationsAddition.state.toJS().document.nodes[1].data).toEqual({ name: 'added' } );
-            expect(operationsAddition).toEqual(addition);
-        }) ;
+            expect(operationsAddition.state.toJS().document.nodes[0].data).toEqual({ name: 'initial' });
+            expect(operationsAddition.state.toJS().document.nodes[1].data).toEqual({ name: 'added' });
+            expect(operationsAddition.state.toJS()).toEqual(addition.state.toJS());
+        });
 });
 
 it('removes node', () => {
     return transform(removal)
-        .then(operations => {
-
-            const operationsRemoval = addition.state.change().applyOperations(operations);
+        .then(transformed => {
+            const operationsRemoval = addition.state.change().applyOperations(transformed);
 
             expect(operationsRemoval.state.toJS().document.nodes.length).toEqual(1);
             expect(operationsRemoval.state.toJS().document.nodes[0].data).toEqual({ name: 'initial' });
@@ -61,13 +78,14 @@ it('removes node', () => {
 });
 
 it('does not matter the order of operations', () => {
-    return Promise.all([transform(addition),transform(removal)])
-        .then(([additionOperation, removalOperation]) => {
-            const addThenRemove  = state.change().applyOperations([...additionOperation, ...removalOperation]);
+    return Promise.all([transform(removal), transform(addition)])
+        .then(([transformedRemoval, transformedAddition]) => {
 
-            const removeThenAdd = state.change().applyOperations([...removalOperation, ...additionOperation ]);
+            const removeThenAdd = state.change().applyOperations([...transformedRemoval, ...transformedAddition]);
 
-            expect(addThenRemove.state.toJS()).toEqual(removeThenAdd.state.toJS());
+            expect(removeThenAdd.state.toJS().document.nodes.length).toEqual(1);
+            expect(removeThenAdd.state.toJS().document.nodes[0].data).toEqual({ name: 'initial' });
+            expect(removeThenAdd.state.toJS()).toEqual(state.toJS());
         });
 });
 
@@ -83,7 +101,7 @@ it('transforms an insert_node operation', () => {
     };
 
     const transformedOperation = {
-        p: [1],
+        p: ['document', 'nodes', 1],
         li: slateOperation.node
     };
 
@@ -101,7 +119,7 @@ it('transforms an remove_node operation', () => {
 
 
     const transformedOperation = {
-        p: [1],
+        p: ['document', 'nodes', 1],
         ld: slateOperation.node
     };
 
@@ -120,22 +138,25 @@ Object.keys(map).forEach(key => {
 });
 
 function toZeroJSON({ operation }) {
+    const [path, ...rest] = operation.path; // TODO: work out why this only seems to work with first element in path
     return {
-        p: operation.path,
+        p: ['document', 'nodes', path],
         [map[operation.type]]: operation.node,
     }
 }
 
 function toSlateOperations(operation) {
-    const slateOp = {
-        path: operation.p,
-    };
+    const path = operation.p.filter(key => !(['document', 'nodes'].includes(key) ));
+
+    const slateOp = {};
 
     Object.keys(inverseMap).forEach(key => {
         const node = operation[key];
         if(node !== undefined) {
             slateOp['node'] = node;
             slateOp['type'] = inverseMap[key];
+            slateOp['path'] = node.kind === 'text' ? [...path, 0] : path;
+            return;
         }
     });
     return slateOp;
