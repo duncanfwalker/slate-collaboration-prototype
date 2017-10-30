@@ -23,33 +23,52 @@ const removal = addition.state.change()
     .removeNodeByKey(addition.state.document.nodes.get(1).key);
 
 
+const transformer = change => {
+    const zeroJson = change.operations.map(operation => toZeroJSON({operation}));
+
+    const transformed = zeroJson.map(op => toSlateOperations(op));
+    return Promise.resolve(transformed);
+};
+
+let transform;
+
+
+beforeEach(() => {
+    transform = transformer;
+});
+
 it('adds node', () => {
-    const operations = transform(addition);
+    return transform(addition)
+        .then(operations => {
+            const operationsAddition = state.change().applyOperations(operations);
 
-    const operationsAddition = state.change().applyOperations(operations);
-
-    expect(operationsAddition.state.toJS().document.nodes[0].data).toEqual({ name: 'initial' } );
-    expect(operationsAddition.state.toJS().document.nodes[1].data).toEqual({ name: 'added' } );
-    expect(operationsAddition).toEqual(addition);
-
+            expect(operationsAddition.state.toJS().document.nodes[0].data).toEqual({ name: 'initial' } );
+            expect(operationsAddition.state.toJS().document.nodes[1].data).toEqual({ name: 'added' } );
+            expect(operationsAddition).toEqual(addition);
+        }) ;
 });
 
 it('removes node', () => {
-    const operations = transform(removal);
+    return transform(removal)
+        .then(operations => {
 
-    const operationsRemoval = addition.state.change().applyOperations(operations);
+            const operationsRemoval = addition.state.change().applyOperations(operations);
 
-    expect(operationsRemoval.state.toJS().document.nodes.length).toEqual(1);
-    expect(operationsRemoval.state.toJS().document.nodes[0].data).toEqual({ name: 'initial' } );
-    expect(operationsRemoval.state.toJS()).toEqual(state.toJS());
+            expect(operationsRemoval.state.toJS().document.nodes.length).toEqual(1);
+            expect(operationsRemoval.state.toJS().document.nodes[0].data).toEqual({ name: 'initial' });
+            expect(operationsRemoval.state.toJS()).toEqual(state.toJS());
+        });
 });
 
 it('does not matter the order of operations', () => {
-    const addThenRemove  = state.change().applyOperations([...transform(addition), ...transform(removal)]);
+    return Promise.all([transform(addition),transform(removal)])
+        .then(([additionOperation, removalOperation]) => {
+            const addThenRemove  = state.change().applyOperations([...additionOperation, ...removalOperation]);
 
-    const removeThenAdd = state.change().applyOperations([...transform(removal), ...transform(addition) ]);
+            const removeThenAdd = state.change().applyOperations([...removalOperation, ...additionOperation ]);
 
-    expect(addThenRemove.state.toJS()).toEqual(removeThenAdd.state.toJS());
+            expect(addThenRemove.state.toJS()).toEqual(removeThenAdd.state.toJS());
+        });
 });
 
 it('slate blocks has default node with kind text and leaves', () => {
@@ -99,12 +118,6 @@ const inverseMap = {};
 Object.keys(map).forEach(key => {
     inverseMap[map[key]] = key;
 });
-
-function transform(change) {
-    const zeroJson = change.operations.map(operation => toZeroJSON({operation}));
-
-    return zeroJson.map(op => toSlateOperations(op));
-}
 
 function toZeroJSON({ operation }) {
     return {
