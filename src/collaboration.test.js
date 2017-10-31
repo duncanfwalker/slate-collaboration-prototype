@@ -35,13 +35,28 @@ const removal = addition.state.change()
     .removeNodeByKey(addition.state.document.nodes.get(1).key);
 
 
-const transformer = doc => change => {
+const transformer = doc => (change, version) => {
     return new Promise((resolve, reject) => {
-        doc.on('op', (ops) => resolve(ops.map(toSlateOperations)));
+        doc.on('op', (ops) => {
+            const operations = ops.map(toSlateOperations);
+
+            return resolve({
+                operations
+            });
+        });
         doc.on('error', reject);
 
+
         const zeroJsonOps = change.operations.map(operation => toZeroJSON({ operation }));
-        doc.submitOp(zeroJsonOps, reject);
+
+        /* We need to fake the version number since it is used to assign op version number here:
+        https://github.com/share/sharedb/blob/b33bdd59ce4f2c55604801d779554add94a12616/lib/client/connection.js#L393
+        */
+        if(version !== undefined) {
+            doc.version = version;
+        }
+
+        doc.submitOp(zeroJsonOps, {source: true}, reject);
     });
 };
 
@@ -57,7 +72,8 @@ beforeEach(() => {
 
 it('adds node', () => {
     return transform(addition)
-        .then(transformed => {
+        .then(({operations}) => {
+            const transformed = operations;
             const operationsAddition = state.change().applyOperations(transformed);
 
             expect(operationsAddition.state.toJS().document.nodes[0].data).toEqual({ name: 'initial' });
@@ -68,7 +84,8 @@ it('adds node', () => {
 
 it('removes node', () => {
     return transform(removal)
-        .then(transformed => {
+        .then(({operations}) => {
+            const transformed = operations;
             const operationsRemoval = addition.state.change().applyOperations(transformed);
 
             expect(operationsRemoval.state.toJS().document.nodes.length).toEqual(1);
@@ -77,11 +94,23 @@ it('removes node', () => {
         });
 });
 
-it('does not matter the order of operations', () => {
-    return Promise.all([transform(removal), transform(addition)])
-        .then(([transformedRemoval, transformedAddition]) => {
+it('keeps version in operation', () => {
+    return transform(addition, 4)
+        .then(({operations}) => {
+            const transformed = operations;
 
-            const removeThenAdd = state.change().applyOperations([...transformedRemoval, ...transformedAddition]);
+            expect(transformed[0].v).toEqual(1);
+        });
+});
+
+it('does not matter the order of operations', () => {
+    const additionPromise = transform(addition);
+    const removalPromise = transform(removal);
+
+    return Promise.all([ additionPromise, removalPromise])
+        .then(([ transformedAddition, transformedRemoval]) => {
+
+            const removeThenAdd = state.change().applyOperations([...transformedRemoval.operations, ...transformedAddition.operations]);
 
             expect(removeThenAdd.state.toJS().document.nodes.length).toEqual(1);
             expect(removeThenAdd.state.toJS().document.nodes[0].data).toEqual({ name: 'initial' });
@@ -142,6 +171,7 @@ function toZeroJSON({ operation }) {
     return {
         p: ['document', 'nodes', path],
         [map[operation.type]]: operation.node,
+        // v: version,
     }
 }
 
