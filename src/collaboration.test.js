@@ -2,7 +2,9 @@ import React from 'react';
 import { Block, Change, State } from 'slate';
 import ShareDB from 'sharedb';
 const backend = new ShareDB();
-
+// process.on('unhandledRejection', (err)=>{
+//     console.log(err)
+// })
 
 function createDoc(state) {
     return new Promise(resolve => {
@@ -15,7 +17,7 @@ function createDoc(state) {
     })
 }
 
-const initialNode = {  kind: 'block', type: 'text', data: { name: 'initial'} };
+const initialNode = {  kind: 'block', type: 'text', data: { name: 'A'} };
 const initialNode2 = {  kind: 'block', type: 'text', data: { name: 'second node'} };
 
 const initialStateJS = {
@@ -31,6 +33,12 @@ const state = State.fromJSON(initialStateJS);
 const addition = state.change()
     .insertNodeByKey(state.document.key, 1, Block.create({ type: 'text', data: { name: 'added' }}));
 
+const additionB = state.change()
+.insertNodeByKey(state.document.key, 1, Block.create({ type: 'text', data: { name: 'B' }}));
+
+const additionC = state.change()
+.insertNodeByKey(state.document.key, 1, Block.create({ type: 'text', data: { name: 'C' }}));
+
 const removal = addition.state.change()
     .removeNodeByKey(addition.state.document.nodes.get(1).key);
 
@@ -38,13 +46,17 @@ const removal = addition.state.change()
 const transformer = doc => (change, version) => {
     return new Promise((resolve, reject) => {
         doc.on('op', (ops) => {
+
             const operations = ops.map(toSlateOperations);
 
-            return resolve({
-                operations
-            });
+            // TODO: try flush operation queue instead of setTimeout
+                    return resolve({
+                        operations
+                })
         });
-        doc.on('error', reject);
+        doc.on('error', (e) => {
+            reject(e)
+        });
 
 
         const zeroJsonOps = change.operations.map(operation => toZeroJSON({ operation }));
@@ -55,6 +67,7 @@ const transformer = doc => (change, version) => {
         if(version !== undefined) {
             doc.version = version;
         }
+
 
         doc.submitOp(zeroJsonOps, {source: true}, reject);
     });
@@ -103,19 +116,33 @@ it('keeps version in operation', () => {
         });
 });
 
-it('does not matter the order of operations', () => {
-    const additionPromise = transform(addition);
-    const removalPromise = transform(removal);
+it.only('does not matter the order of operations', () => {
+    var slateChangeC;
+    // try{
+    return  transform(additionC, 1)
+        .then((transformedAddition) => {
+            slateChangeC = transformedAddition;            
+            return transform(additionB, 2);
+        })
+        .then((slateChangeB)=>{
 
-    return Promise.all([ additionPromise, removalPromise])
-        .then(([ transformedAddition, transformedRemoval]) => {
+            expect(slateChangeB.operations[0].path).toEqual([1]);
 
-            const removeThenAdd = state.change().applyOperations([...transformedRemoval.operations, ...transformedAddition.operations]);
-
-            expect(removeThenAdd.state.toJS().document.nodes.length).toEqual(1);
-            expect(removeThenAdd.state.toJS().document.nodes[0].data).toEqual({ name: 'initial' });
-            expect(removeThenAdd.state.toJS()).toEqual(state.toJS());
-        });
+            expect(slateChangeC.operations[0].path).toEqual([2]);
+            
+            const removeThenAdd = state.change().applyOperations([...slateChangeB.operations, ...slateChangeC.operations]);
+            
+            expect(removeThenAdd.state.toJS().document.nodes.length).toEqual(3);
+            expect(removeThenAdd.state.toJS().document.nodes.map(node => node.data.name)).toEqual(['A','B','C']);
+            // expect(removeThenAdd.state.toJS().document.nodes[0].data).toEqual({ name: 'initial' });
+            // expect(removeThenAdd.state.toJS()).toEqual(state.toJS());
+        })
+        // .catch((err) => {
+        //     expect(err).toEqual({});
+        // })
+    // }catch(err){
+    //     console.log('error', err);
+    // }
 });
 
 it('slate blocks has default node with kind text and leaves', () => {
@@ -198,3 +225,4 @@ function toSlateOperations(operation) {
  *
  * using json0 operational transforms are O(n^2) so prob not scalable for character level changes or even large numbers of blocks
  */
+
