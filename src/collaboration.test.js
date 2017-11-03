@@ -1,19 +1,23 @@
 import React from 'react';
 import { Block, Change, State } from 'slate';
-import ShareDB from 'sharedb';
-const backend = new ShareDB();
-// process.on('unhandledRejection', (err)=>{
-//     console.log(err)
-// })
+import sharedb from 'sharedb/lib/client';
+import WebSocket from 'ws';
 
-function createDoc(state) {
-    return new Promise(resolve => {
-        const connection = backend.connect();
-        const doc = connection.get('articles', 'article1');
-        doc.fetch(function (err) {
-            if (err) throw err;
-            doc.create(state, () => resolve(doc));
-        });
+
+const url = 'ws://' + 'localhost' +':8080';
+
+require('./server');
+var socket = new WebSocket('ws://' + url, {handshakeTimeout: 10000});
+var conn1 = new sharedb.Connection(socket);
+var conn2 = new sharedb.Connection(socket);
+
+function fetchDoc(connection) {
+    const doc = connection.get('articles', 'article1');
+    return new Promise((resolve, reject) => {
+        doc.fetch((err) => {
+            if(err) reject(err);
+            resolve(doc);
+        })
     })
 }
 
@@ -23,7 +27,7 @@ const initialNode2 = {  kind: 'block', type: 'text', data: { name: 'second node'
 const initialStateJS = {
     document: {
         nodes: [
-            initialNode
+            {  kind: 'block', type: 'text', data: { name: 'A'} }
         ]
     }
 };
@@ -43,44 +47,69 @@ const removal = addition.state.change()
     .removeNodeByKey(addition.state.document.nodes.get(1).key);
 
 
-const transformer = doc => (change, version) => {
+const transformer = doc => (change, delay = 0) => {
     return new Promise((resolve, reject) => {
-        doc.on('op', (ops) => {
+        setTimeout(() => {
 
-            const operations = ops.map(toSlateOperations);
+            doc.subscribe(function (err) {
 
-            // TODO: try flush operation queue instead of setTimeout
+                if (err) reject(err);
+                doc.on('op', (ops) => {
+
+                    const operations = ops.map(toSlateOperations);
+                    // doc.unsubscribe(() => {
+                    if (err) reject(err);
+
+                    if(operations[0].node.data) {
+
+                    console.log('Path',operations[0].node.data.name,operations[0].path[0])
+                    }
                     return resolve({
                         operations
-                })
-        });
-        doc.on('error', (e) => {
-            reject(e)
-        });
+                    })
+                    // })
+                });
+                doc.on('error', (e) => {
+                    reject(e)
+                });
 
 
-        const zeroJsonOps = change.operations.map(operation => toZeroJSON({ operation }));
+                const zeroJsonOps = change.operations.map(operation => toZeroJSON({ operation }));
 
-        /* We need to fake the version number since it is used to assign op version number here:
-        https://github.com/share/sharedb/blob/b33bdd59ce4f2c55604801d779554add94a12616/lib/client/connection.js#L393
-        */
-        if(version !== undefined) {
-            doc.version = version;
-        }
+                /* We need to fake the version number since it is used to assign op version number here:
+                 https://github.com/share/sharedb/blob/b33bdd59ce4f2c55604801d779554add94a12616/lib/client/connection.js#L393
+                 */
 
 
-        doc.submitOp(zeroJsonOps, {source: true}, reject);
+                // console.log('submitting', zeroJsonOps["0"].li.get('data').get('name'));
+                doc.submitOp(zeroJsonOps, { source: true }, reject);
+
+                // doc.version = previousVersion;
+                doc.flush()
+            })
+        }, delay);
     });
 };
 
 
 let transform;
 beforeEach(() => {
+
+    conn1.bindToSocket(new WebSocket(url));
+    conn2.bindToSocket(new WebSocket(url));
+
     const jsState = state.toJS();
-    return createDoc(jsState)
-        .then((doc) => {
-            transform = transformer(doc);
-        });
+    // return fetchDoc()
+    //     .then((doc) => {
+    //         transform = transformer(doc);
+    //     });
+});
+
+afterEach(() => {
+  setTimeout(() => {
+        conn1.close();
+        conn2.close();
+    }, 2000);
 });
 
 it('adds node', () => {
@@ -116,33 +145,62 @@ it('keeps version in operation', () => {
         });
 });
 
+function namesFromDoc(doc) {
+    return doc.data.document.nodes
+        .filter(node => node.data)
+        .map(node => node.data.name);
+}
+
 it.only('does not matter the order of operations', () => {
     var slateChangeC;
     // try{
-    return  transform(additionC, 1)
-        .then((transformedAddition) => {
-            slateChangeC = transformedAddition;            
-            return transform(additionB, 2);
-        })
-        .then((slateChangeB)=>{
 
-            expect(slateChangeB.operations[0].path).toEqual([1]);
-
-            expect(slateChangeC.operations[0].path).toEqual([2]);
-            
-            const removeThenAdd = state.change().applyOperations([...slateChangeB.operations, ...slateChangeC.operations]);
-            
-            expect(removeThenAdd.state.toJS().document.nodes.length).toEqual(3);
-            expect(removeThenAdd.state.toJS().document.nodes.map(node => node.data.name)).toEqual(['A','B','C']);
-            // expect(removeThenAdd.state.toJS().document.nodes[0].data).toEqual({ name: 'initial' });
-            // expect(removeThenAdd.state.toJS()).toEqual(state.toJS());
+    // https://github.com/ottypes/json0/blob/master/test/json0.coffee#L139
+    let doc2;
+    let doc1;
+    return  fetchDoc(conn1)
+        .then(doc => {
+            doc1 = doc;
+            return fetchDoc(conn2)
+         })
+        .then((doc) => {
+            doc2 = doc;
         })
-        // .catch((err) => {
-        //     expect(err).toEqual({});
-        // })
-    // }catch(err){
-    //     console.log('error', err);
-    // }
+        // .then(() => new Promise((resolve => doc1.unsubscribe(resolve))))
+        .then(() => {
+            return  transformer(doc1)(additionC) // (doc1)(additionC)
+                .then((transformedAddition) => {
+                    // throw JSON.stringify(transformedAddition)
+                    // doc2.data = {...initialStateJS};
+                    slateChangeC = transformedAddition;
+                    return transformer(doc2)(additionB)
+                })
+                .then((slateChangeB)=>{
+                    // throw JSON.stringify(slateChangeB)
+                    console.log("2",slateChangeB)
+                    // expect(doc2.version).toEqual(doc1.version);
+                    // expect(namesFromDoc(doc1)).toEqual(['A','C']);
+                    // expect(namesFromDoc(doc2)).toEqual(['A','B', 'C']);
+
+                    // expect(doc2.data.document.nodes.map(node => node.data && node.data.name)).toEqual(['A']);
+                    // expect(doc1.data.document.nodes.map(node =>  node.data && node.data.name)).toEqual(['A']);
+                    //
+                    expect(slateChangeB.operations[0].node.data.name).toEqual('B');
+                    expect(slateChangeB.operations[0].path).toEqual([1]);
+                    //
+                    expect(slateChangeC.operations[0].node.data.name).toEqual('C');
+                    expect(slateChangeC.operations[0].path).toEqual([2]);
+                    // expect(slateChangeC.operations[0].path).toEqual([2]);
+                    //
+                    // const removeThenAdd = state.change().applyOperations([...slateChangeB.operations, ...slateChangeC.operations]);
+                    //
+                    // expect(removeThenAdd.state.toJS().document.nodes.length).toEqual(3);
+                    // expect(removeThenAdd.state.toJS().document.nodes.map(node => node.data.name)).toEqual(['A','B','C']);
+                    // expect(removeThenAdd.state.toJS().document.nodes[0].data).toEqual({ name: 'initial' });
+                    // expect(removeThenAdd.state.toJS()).toEqual(state.toJS());
+                })
+        })
+
 });
 
 it('slate blocks has default node with kind text and leaves', () => {
@@ -212,12 +270,14 @@ function toSlateOperations(operation) {
         if(node !== undefined) {
             slateOp['node'] = node;
             slateOp['type'] = inverseMap[key];
-            slateOp['path'] = node.kind === 'text' ? [...path, 0] : path;
+            slateOp['path'] = node.kind === 'text' ? [...path, 0] : [...path];
             return;
         }
     });
     return slateOp;
 }
+
+
 
 
 /**
