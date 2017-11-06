@@ -48,29 +48,47 @@ const removal = addition.state.change()
 
 
 const transformer = doc => (change, delay = 0) => {
+    let count = 0;
     return new Promise((resolve, reject) => {
-        setTimeout(() => {
+        // setTimeout(() => {
 
             doc.subscribe(function (err) {
 
                 if (err) reject(err);
-                doc.on('op', (ops) => {
+                doc.on('op', (ops, source) => {
 
-                    const operations = ops.map(toSlateOperations);
-                    // doc.unsubscribe(() => {
-                    if (err) reject(err);
+                    try {
+                        console.log(ops)
 
-                    if(operations[0].node.data) {
+                        const operations = ops.map(toSlateOperations);
+                        // doc.unsubscribe(() => {
+                        if (err) reject(err);
 
-                    console.log('Path',operations[0].node.data.name,operations[0].path[0])
+                        let name;
+                        let path;
+                        if(operations[0].node.data) {
+                            count++;
+                            name = operations[0].node.data.name;
+                            path = operations[0].path[0];
+
+                        }
+
+                        if(( name === 'B') || (name === 'C' && !source) ) {
+                            console.log('Count',count)
+                            console.log('Path',name,path)
+                            return resolve({
+                                operations
+                            })
+                        }
+                    } catch (e) {
+                        reject(e);
                     }
-                    return resolve({
-                        operations
-                    })
+                    //
                     // })
                 });
                 doc.on('error', (e) => {
-                    reject(e)
+                    console.log('Error',e)
+                    reject(e);
                 });
 
 
@@ -87,7 +105,7 @@ const transformer = doc => (change, delay = 0) => {
                 // doc.version = previousVersion;
                 doc.flush()
             })
-        }, delay);
+        // }, delay);
     });
 };
 
@@ -168,16 +186,11 @@ it.only('does not matter the order of operations', () => {
         })
         // .then(() => new Promise((resolve => doc1.unsubscribe(resolve))))
         .then(() => {
-            return  transformer(doc1)(additionC) // (doc1)(additionC)
-                .then((transformedAddition) => {
-                    // throw JSON.stringify(transformedAddition)
-                    // doc2.data = {...initialStateJS};
-                    slateChangeC = transformedAddition;
-                    return transformer(doc2)(additionB)
-                })
-                .then((slateChangeB)=>{
+
+            return Promise.all([transformer(doc1)(additionC),transformer(doc2)(additionB)])  // (doc1)(additionC)
+                .then(([slateChangeC, slateChangeB])=>{
                     // throw JSON.stringify(slateChangeB)
-                    console.log("2",slateChangeB)
+                    console.log("RESOLVED");
                     // expect(doc2.version).toEqual(doc1.version);
                     // expect(namesFromDoc(doc1)).toEqual(['A','C']);
                     // expect(namesFromDoc(doc2)).toEqual(['A','B', 'C']);
@@ -189,7 +202,7 @@ it.only('does not matter the order of operations', () => {
                     expect(slateChangeB.operations[0].path).toEqual([1]);
                     //
                     expect(slateChangeC.operations[0].node.data.name).toEqual('C');
-                    expect(slateChangeC.operations[0].path).toEqual([2]);
+                    expect(slateChangeC.operations[0].path).toEqual([3]);
                     // expect(slateChangeC.operations[0].path).toEqual([2]);
                     //
                     // const removeThenAdd = state.change().applyOperations([...slateChangeB.operations, ...slateChangeC.operations]);
