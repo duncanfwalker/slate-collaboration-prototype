@@ -47,66 +47,50 @@ const removal = addition.state.change()
     .removeNodeByKey(addition.state.document.nodes.get(1).key);
 
 
-const transformer = doc => (change, delay = 0) => {
+const transformer = doc => (change, operationDone) => {
     let count = 0;
-    return new Promise((resolve, reject) => {
-        // setTimeout(() => {
+    doc.subscribe(function (err) {
 
-            doc.subscribe(function (err) {
+        doc.on('op', (ops, source) => {
 
-                if (err) reject(err);
-                doc.on('op', (ops, source) => {
+            console.log(ops)
 
-                    try {
-                        console.log(ops)
+            const operations = ops.map(toSlateOperations);
+            // doc.unsubscribe(() => {
+            // if (err) reject(err);
 
-                        const operations = ops.map(toSlateOperations);
-                        // doc.unsubscribe(() => {
-                        if (err) reject(err);
+            let name;
+            let path;
+            if(operations[0].node.data) {
+                count++;
+                name = operations[0].node.data.name;
+                path = operations[0].path[0];
 
-                        let name;
-                        let path;
-                        if(operations[0].node.data) {
-                            count++;
-                            name = operations[0].node.data.name;
-                            path = operations[0].path[0];
+            }
 
-                        }
-
-                        if(( name === 'B') || (name === 'C' && !source) ) {
-                            console.log('Count',count)
-                            console.log('Path',name,path)
-                            return resolve({
-                                operations
-                            })
-                        }
-                    } catch (e) {
-                        reject(e);
-                    }
-                    //
-                    // })
-                });
-                doc.on('error', (e) => {
-                    console.log('Error',e)
-                    reject(e);
-                });
-
-
-                const zeroJsonOps = change.operations.map(operation => toZeroJSON({ operation }));
-
-                /* We need to fake the version number since it is used to assign op version number here:
-                 https://github.com/share/sharedb/blob/b33bdd59ce4f2c55604801d779554add94a12616/lib/client/connection.js#L393
-                 */
-
-
-                // console.log('submitting', zeroJsonOps["0"].li.get('data').get('name'));
-                doc.submitOp(zeroJsonOps, { source: true }, reject);
-
-                // doc.version = previousVersion;
-                doc.flush()
+            console.log('Count',count)
+            console.log('Path',name,path)
+            return operationDone({
+                operations
             })
-        // }, delay);
-    });
+        });
+
+        const zeroJsonOps = change.operations.map(operation => toZeroJSON({ operation }));
+
+        /* We need to fake the version number since it is used to assign op version number here:
+         https://github.com/share/sharedb/blob/b33bdd59ce4f2c55604801d779554add94a12616/lib/client/connection.js#L393
+         */
+
+
+        // console.log('submitting', zeroJsonOps["0"].li.get('data').get('name'));
+        doc.submitOp(zeroJsonOps, { source: true }, (err) => {
+            console.error(err)
+        });
+
+        // doc.version = previousVersion;
+        doc.flush()
+    })
+// }, delay);
 };
 
 
@@ -169,14 +153,14 @@ function namesFromDoc(doc) {
         .map(node => node.data.name);
 }
 
-it.only('does not matter the order of operations', () => {
+it.only('does not matter the order of operations', (done) => {
     var slateChangeC;
     // try{
 
     // https://github.com/ottypes/json0/blob/master/test/json0.coffee#L139
     let doc2;
     let doc1;
-    return  fetchDoc(conn1)
+    fetchDoc(conn1)
         .then(doc => {
             doc1 = doc;
             return fetchDoc(conn2)
@@ -186,34 +170,50 @@ it.only('does not matter the order of operations', () => {
         })
         // .then(() => new Promise((resolve => doc1.unsubscribe(resolve))))
         .then(() => {
+            const operationWrappers = [];
 
-            return Promise.all([transformer(doc1)(additionC),transformer(doc2)(additionB)])  // (doc1)(additionC)
-                .then(([slateChangeC, slateChangeB])=>{
-                    // throw JSON.stringify(slateChangeB)
-                    console.log("RESOLVED");
-                    // expect(doc2.version).toEqual(doc1.version);
-                    // expect(namesFromDoc(doc1)).toEqual(['A','C']);
-                    // expect(namesFromDoc(doc2)).toEqual(['A','B', 'C']);
+            const operationDone = ({ operations }) => {
+                operationWrappers.push(operations);
 
-                    // expect(doc2.data.document.nodes.map(node => node.data && node.data.name)).toEqual(['A']);
-                    // expect(doc1.data.document.nodes.map(node =>  node.data && node.data.name)).toEqual(['A']);
-                    //
-                    expect(slateChangeB.operations[0].node.data.name).toEqual('B');
-                    expect(slateChangeB.operations[0].path).toEqual([1]);
-                    //
-                    expect(slateChangeC.operations[0].node.data.name).toEqual('C');
-                    expect(slateChangeC.operations[0].path).toEqual([3]);
-                    // expect(slateChangeC.operations[0].path).toEqual([2]);
-                    //
-                    // const removeThenAdd = state.change().applyOperations([...slateChangeB.operations, ...slateChangeC.operations]);
-                    //
-                    // expect(removeThenAdd.state.toJS().document.nodes.length).toEqual(3);
-                    // expect(removeThenAdd.state.toJS().document.nodes.map(node => node.data.name)).toEqual(['A','B','C']);
-                    // expect(removeThenAdd.state.toJS().document.nodes[0].data).toEqual({ name: 'initial' });
-                    // expect(removeThenAdd.state.toJS()).toEqual(state.toJS());
-                })
-        })
+                if (operationWrappers.length === 4 ) {
+                    const allOperations = operationWrappers.reduce((memo, current) => ([...memo, ...current]),[]);
 
+                    const rest = allOperations.filter((item, index) => [2,3,4].includes(index));
+
+                    const bothApplied = state.change().applyOperations(rest);
+
+
+                    expect(bothApplied.state.toJS().document.nodes.map(node => node.data.name)).toEqual(['A','B','C']);
+                    done();
+                }
+            };
+
+            transformer(doc1)(additionC, (results) => {
+                transformer(doc2)(additionB, operationDone);
+                operationDone(results)
+            });
+
+
+
+            // return Promise.all([transformer(doc1)(additionC),transformer(doc2)(additionB)])  // (doc1)(additionC)
+            //     .then(([slateChangeC, slateChangeB])=>{
+            // throw JSON.stringify(slateChangeB)
+            // console.log("RESOLVED");
+            // expect(doc2.version).toEqual(doc1.version);
+            // expect(namesFromDoc(doc1)).toEqual(['A','C']);
+            // expect(namesFromDoc(doc2)).toEqual(['A','B', 'C']);
+
+            // expect(doc2.data.document.nodes.map(node => node.data && node.data.name)).toEqual(['A']);
+            // expect(doc1.data.document.nodes.map(node =>  node.data && node.data.name)).toEqual(['A']);
+            //
+
+            // expect(slateChangeC.operations[0].path).toEqual([2]);
+            //
+
+            //             // expect(removeThenAdd.state.toJS()).toEqual(state.toJS());
+            //         })
+            // })
+        });
 });
 
 it('slate blocks has default node with kind text and leaves', () => {
