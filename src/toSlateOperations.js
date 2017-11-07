@@ -9,7 +9,7 @@ Object.keys(map).forEach(key => {
     inverseMap[map[key]] = key;
 });
 
-function toSlateOperations(operation) {
+export function toSlateOperations(operation) {
     const path = operation.p.filter(key => !(['document', 'nodes'].includes(key) ));
 
     const slateOp = {};
@@ -26,4 +26,12 @@ function toSlateOperations(operation) {
     return slateOp;
 }
 
-export default toSlateOperations;
+export function toZeroJSON({ operation }) {
+    const [path, ...rest] = operation.path; // TODO: work out why this only seems to work with first element in path
+    return {
+        p: ['document', 'nodes', path],
+        [map[operation.type]]: operation.node,
+        // v: version,
+    }
+}
+

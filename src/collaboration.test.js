@@ -2,7 +2,8 @@ import React from 'react';
 import { Block, Change, State } from 'slate';
 import sharedb from 'sharedb/lib/client';
 import WebSocket from 'ws';
-
+import {toZeroJSON, toSlateOperations} from './toSlateOperations';
+import transformer from './transformer';
 
 const url = 'ws://' + 'localhost' +':8080';
 
@@ -45,53 +46,6 @@ const additionC = state.change()
 
 const removal = addition.state.change()
     .removeNodeByKey(addition.state.document.nodes.get(1).key);
-
-
-const transformer = doc => (change, operationDone) => {
-    let count = 0;
-    doc.subscribe(function (err) {
-
-        doc.on('op', (ops, source) => {
-
-            console.log(ops)
-
-            const operations = ops.map(toSlateOperations);
-            // doc.unsubscribe(() => {
-            // if (err) reject(err);
-
-            let name;
-            let path;
-            if(operations[0].node.data) {
-                count++;
-                name = operations[0].node.data.name;
-                path = operations[0].path[0];
-
-            }
-
-            console.log('Count',count)
-            console.log('Path',name,path)
-            return operationDone({
-                operations
-            })
-        });
-
-        const zeroJsonOps = change.operations.map(operation => toZeroJSON({ operation }));
-
-        /* We need to fake the version number since it is used to assign op version number here:
-         https://github.com/share/sharedb/blob/b33bdd59ce4f2c55604801d779554add94a12616/lib/client/connection.js#L393
-         */
-
-
-        // console.log('submitting', zeroJsonOps["0"].li.get('data').get('name'));
-        doc.submitOp(zeroJsonOps, { source: true }, (err) => {
-            console.error(err)
-        });
-
-        // doc.version = previousVersion;
-        doc.flush()
-    })
-// }, delay);
-};
 
 
 let transform;
@@ -252,44 +206,6 @@ it('transforms an remove_node operation', () => {
 
     expect(toZeroJSON({ operation: slateOperation })).toEqual(transformedOperation)
 });
-
-const map = {
-    remove_node: 'ld',
-    insert_node: 'li'
-};
-
-const inverseMap = {};
-
-Object.keys(map).forEach(key => {
-    inverseMap[map[key]] = key;
-});
-
-function toZeroJSON({ operation }) {
-    const [path, ...rest] = operation.path; // TODO: work out why this only seems to work with first element in path
-    return {
-        p: ['document', 'nodes', path],
-        [map[operation.type]]: operation.node,
-        // v: version,
-    }
-}
-
-function toSlateOperations(operation) {
-    const path = operation.p.filter(key => !(['document', 'nodes'].includes(key) ));
-
-    const slateOp = {};
-
-    Object.keys(inverseMap).forEach(key => {
-        const node = operation[key];
-        if(node !== undefined) {
-            slateOp['node'] = node;
-            slateOp['type'] = inverseMap[key];
-            slateOp['path'] = node.kind === 'text' ? [...path, 0] : [...path];
-            return;
-        }
-    });
-    return slateOp;
-}
-
 
 
 

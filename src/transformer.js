@@ -1,3 +1,5 @@
+import {toZeroJSON, toSlateOperations} from './toSlateOperations';
+
 const transformer = doc => (change, operationDone) => {
     let count = 0;
     doc.subscribe(function (err) {
@@ -41,14 +43,5 @@ const transformer = doc => (change, operationDone) => {
     })
 
 };
-
-function toZeroJSON({ operation }) {
-    const [path, ...rest] = operation.path; // TODO: work out why this only seems to work with first element in path
-    return {
-        p: ['document', 'nodes', path],
-        [map[operation.type]]: operation.node,
-
-    }
-}
 
 export default transformer;
