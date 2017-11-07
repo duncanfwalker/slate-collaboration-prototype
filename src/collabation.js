@@ -1,5 +1,5 @@
 import { Editor } from 'slate-react';
-import { State } from 'slate';
+import { State, Block } from 'slate';
 
 import React from 'react';
 import initialState from './state.json';
@@ -41,6 +41,8 @@ const schema = {
         }
     }
 }
+
+
 
 /**
  * A simple editor component to demo syncing with.
@@ -158,6 +160,29 @@ class SyncingEditor extends React.Component {
         )
     }
 
+
+    addBlock(state, text = 'A') {
+        const { state: slateState } = state
+        const blockInfo = {
+            data: {},
+            isVoid: false,
+            type: 'paragraph',
+            "nodes": [
+                {
+                    "kind": "text",
+                    "ranges": [
+                        {
+                            "text": text
+                        }
+                    ]
+                }
+            ]
+        }
+        const newState = slateState.change()
+            .insertNodeByKey(slateState.document.key, slateState.document.nodes.size,  Block.create(blockInfo))
+        this.onChange(newState)
+    }
+
     /**
      * Render the toolbar.
      *
@@ -171,6 +196,12 @@ class SyncingEditor extends React.Component {
                 {this.renderButton('italic', 'format_italic')}
                 {this.renderButton('underlined', 'format_underlined')}
                 {this.renderButton('code', 'code')}
+                <div name='paragraph' active={true} onClick={() => this.addBlock(this.state, 'B')}>
+                    Add paragraph B
+                </div>
+                <div name='paragraph' active={true} onClick={() => this.addBlock(this.state, 'C')}>
+                    Add paragraph C
+                </div>
             </div>
         )
     }
