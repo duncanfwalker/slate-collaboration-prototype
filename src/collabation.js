@@ -284,7 +284,7 @@ class SyncingOperationsExample extends React.Component {
 
     onOneChange = (change) => {
         const ops = change.operations.filter(o => o.type != 'set_selection' && o.type != 'set_state')
-        this.two.applyOperations(ops)
+        setTimeout(() => this.two.applyOperations(ops), (1 + Math.random()) * 1000);
     }
 
     /**
@@ -310,6 +310,7 @@ class SyncingOperationsExample extends React.Component {
                 <SyncingEditor
                     ref={this.oneRef}
                     onChange={this.onOneChange}
+
                 />
                 <div
                     style={{
