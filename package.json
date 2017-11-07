@@ -4,6 +4,7 @@
   "private": true,
   "dependencies": {
     "concurrently": "^3.5.0",
+    "cors": "^2.8.4",
     "express": "latest",
     "immutable": "^3.8.2",
     "react": "^16.0.0",
@@ -16,7 +17,8 @@
     "ws": "^3.2.0"
   },
   "scripts": {
-    "start": "concurrently \"react-scripts start\" \"babel-node src/server.js\"",
+    "start": "concurrently \"node src/server.js\" \"react-scripts start\"",
+    "server": "node src/server.js",
     "build": "react-scripts build",
     "test": "react-scripts test --env=jsdom",
     "eject": "react-scripts eject"

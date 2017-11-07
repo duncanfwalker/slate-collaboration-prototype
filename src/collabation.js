@@ -101,7 +101,10 @@ class SyncingEditor extends React.Component {
         this.setState({ state: change.state })
 
         if (!options.remote) {
-            this.props.onChange(change)
+            setTimeout(() => {
+                this.props.onChange(change)
+            }, options.delay);
+
         }
     }
 
@@ -179,10 +182,14 @@ class SyncingEditor extends React.Component {
                     ]
                 }
             ]
-        }
+        };
         const newState = slateState.change()
             .insertNodeByKey(slateState.document.key, slateState.document.nodes.size,  Block.create(blockInfo))
-        this.onChange(newState)
+
+
+        const delay = text === 'B' ? 5000 : 0;
+        this.onChange(newState, {delay});
+
     }
 
     /**
@@ -271,7 +278,9 @@ class SyncingOperationsExample extends React.Component {
 
     oneRef = (one) => {
         this.one = one
-        this.conn1.onOp(this.one.applyOperations)
+        this.conn2.onOp((change) => {
+            this.one.applyOperations(change.operations)
+        })
     }
 
     /**
@@ -282,8 +291,13 @@ class SyncingOperationsExample extends React.Component {
 
     twoRef = (two) => {
         this.two = two
-        this.conn2.onOp(this.two.applyOperations)
+        this.conn1.onOp((change) => {
+            this.two.applyOperations(change.operations)
+        })
     }
+
+
+
 
     /**
      * When editor one changes, send document-alterting operations to edtior two.
@@ -292,7 +306,7 @@ class SyncingOperationsExample extends React.Component {
      */
 
     onOneChange = (change) => {
-        setTimeout(() => this.conn1.submit(change), (1 + Math.random()) * 1000);
+        this.conn1.submit(change)
         // const ops = change.operations.filter(o => o.type != 'set_selection' && o.type != 'set_state')
         // setTimeout(() => this.two.applyOperations(ops), (1 + Math.random()) * 1000);
     }

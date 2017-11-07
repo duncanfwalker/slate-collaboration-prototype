@@ -28,10 +28,12 @@ export function toSlateOperations(operation) {
 
 export function toShareDBOperations({ operation }) {
     const [path, ...rest] = operation.path; // TODO: work out why this only seems to work with first element in path
-    return {
+    const ops = {
         p: ['document', 'nodes', path],
         [map[operation.type]]: operation.node,
         // v: version,
-    }
+    };
+    console.log(ops);
+    return ops
 }
 
