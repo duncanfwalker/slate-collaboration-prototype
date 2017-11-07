@@ -1,26 +1,11 @@
 import React from 'react';
 import { Block, Change, State } from 'slate';
-import sharedb from 'sharedb/lib/client';
-import WebSocket from 'ws';
 import {toZeroJSON, toSlateOperations} from './toSlateOperations';
 import transformer from './transformer';
+import connect from './client'
 
-const url = 'ws://' + 'localhost' +':8080';
 
 require('./server');
-var socket = new WebSocket('ws://' + url, {handshakeTimeout: 10000});
-var conn1 = new sharedb.Connection(socket);
-var conn2 = new sharedb.Connection(socket);
-
-function fetchDoc(connection) {
-    const doc = connection.get('articles', 'article1');
-    return new Promise((resolve, reject) => {
-        doc.fetch((err) => {
-            if(err) reject(err);
-            resolve(doc);
-        })
-    })
-}
 
 const initialNode = {  kind: 'block', type: 'text', data: { name: 'A'} };
 const initialNode2 = {  kind: 'block', type: 'text', data: { name: 'second node'} };
@@ -49,9 +34,11 @@ const removal = addition.state.change()
 
 
 let transform;
+let conn1;
+let conn2;
 beforeEach(() => {
-    conn1.bindToSocket(new WebSocket(url));
-    conn2.bindToSocket(new WebSocket(url));
+    conn1 = connect();
+    conn2 = connect();
 });
 
 afterEach(() => {
@@ -91,17 +78,17 @@ function namesFromDoc(doc) {
         .map(node => node.data.name);
 }
 
-it('does not matter the order of operations', (done) => {
+it.only('does not matter the order of operations', (done) => {
     var slateChangeC;
     // try{
 
     // https://github.com/ottypes/json0/blob/master/test/json0.coffee#L139
     let doc2;
     let doc1;
-    fetchDoc(conn1)
+    conn1.fetchDoc()
         .then(doc => {
             doc1 = doc;
-            return fetchDoc(conn2)
+            return conn2.fetchDoc()
          })
         .then((doc) => {
             doc2 = doc;
