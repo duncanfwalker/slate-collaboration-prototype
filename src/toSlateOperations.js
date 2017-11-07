@@ -26,7 +26,7 @@ export function toSlateOperations(operation) {
     return slateOp;
 }
 
-export function toZeroJSON({ operation }) {
+export function toShareDBOperations({ operation }) {
     const [path, ...rest] = operation.path; // TODO: work out why this only seems to work with first element in path
     return {
         p: ['document', 'nodes', path],

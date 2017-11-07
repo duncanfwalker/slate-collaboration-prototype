@@ -1,4 +1,4 @@
-import { toSlateOperations, toZeroJSON } from './toSlateOperations';
+import { toSlateOperations, toShareDBOperations } from './toSlateOperations';
 
 const transformer = doc => (change, operationDone) => {
     doc.subscribe(function (err) {
@@ -10,7 +10,7 @@ const transformer = doc => (change, operationDone) => {
                 })
         );
 
-        const zeroJsonOps = change.operations.map(operation => toZeroJSON({ operation }));
+        const zeroJsonOps = change.operations.map(operation => toShareDBOperations({ operation }));
 
         doc.submitOp(zeroJsonOps, { source: true }, console.error);
 

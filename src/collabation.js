@@ -5,6 +5,8 @@ import React from 'react';
 import initialState from './state.json';
 import { isKeyHotkey } from 'is-hotkey';
 
+import connect from './client';
+
 /**
  * Hotkey matchers.
  *
@@ -255,7 +257,12 @@ class SyncingEditor extends React.Component {
  */
 
 class SyncingOperationsExample extends React.Component {
+    constructor() {
+        super()
+        this.conn1 = connect()
+        this.conn2 = connect()
 
+    }
     /**
      * Save a reference to editor `one`.
      *
@@ -264,6 +271,7 @@ class SyncingOperationsExample extends React.Component {
 
     oneRef = (one) => {
         this.one = one
+        this.conn1.onOp(this.one.applyOperations)
     }
 
     /**
@@ -274,6 +282,7 @@ class SyncingOperationsExample extends React.Component {
 
     twoRef = (two) => {
         this.two = two
+        this.conn2.onOp(this.two.applyOperations)
     }
 
     /**
@@ -283,8 +292,9 @@ class SyncingOperationsExample extends React.Component {
      */
 
     onOneChange = (change) => {
-        const ops = change.operations.filter(o => o.type != 'set_selection' && o.type != 'set_state')
-        setTimeout(() => this.two.applyOperations(ops), (1 + Math.random()) * 1000);
+        setTimeout(() => this.conn1.submit(change), (1 + Math.random()) * 1000);
+        // const ops = change.operations.filter(o => o.type != 'set_selection' && o.type != 'set_state')
+        // setTimeout(() => this.two.applyOperations(ops), (1 + Math.random()) * 1000);
     }
 
     /**
@@ -294,8 +304,9 @@ class SyncingOperationsExample extends React.Component {
      */
 
     onTwoChange = (change) => {
-        const ops = change.operations.filter(o => o.type != 'set_selection' && o.type != 'set_state')
-        this.one.applyOperations(ops)
+        this.conn2.submit(change)
+        // const ops = change.operations.filter(o => o.type != 'set_selection' && o.type != 'set_state')
+        // this.one.applyOperations(ops)
     }
 
     /**

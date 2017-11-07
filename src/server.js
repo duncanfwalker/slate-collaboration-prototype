@@ -1,8 +1,8 @@
-import express from 'express';
-import http from 'http';
-import ShareDB from 'sharedb';
-import WebSocket from 'ws';
-import WebSocketJSONStream from 'websocket-json-stream';
+const express = require( 'express');
+const http = require( 'http');
+const ShareDB = require( 'sharedb');
+const WebSocket = require( 'ws');
+const WebSocketJSONStream = require( 'websocket-json-stream');
 
 
 const initialStateJS = {

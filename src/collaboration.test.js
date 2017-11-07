@@ -1,6 +1,6 @@
 import React from 'react';
 import { Block, Change, State } from 'slate';
-import {toZeroJSON, toSlateOperations} from './toSlateOperations';
+import {toShareDBOperations, toSlateOperations} from './toSlateOperations';
 import transformer from './transformer';
 import connect from './client'
 
@@ -157,7 +157,7 @@ it('transforms an insert_node operation', () => {
         li: slateOperation.node
     };
 
-    expect(toZeroJSON({ operation: slateOperation })).toEqual(transformedOperation)
+    expect(toShareDBOperations({ operation: slateOperation })).toEqual(transformedOperation)
 
 });
 
@@ -175,7 +175,7 @@ it('transforms an remove_node operation', () => {
         ld: slateOperation.node
     };
 
-    expect(toZeroJSON({ operation: slateOperation })).toEqual(transformedOperation)
+    expect(toShareDBOperations({ operation: slateOperation })).toEqual(transformedOperation)
 });
 
 
