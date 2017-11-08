@@ -187,8 +187,7 @@ class SyncingEditor extends React.Component {
             .insertNodeByKey(slateState.document.key, slateState.document.nodes.size,  Block.create(blockInfo))
 
 
-        const delay = text === 'B' ? 5000 : 0;
-        this.onChange(newState, {delay});
+        this.onChange(newState);
 
     }
 
@@ -205,12 +204,12 @@ class SyncingEditor extends React.Component {
                 {this.renderButton('italic', 'format_italic')}
                 {this.renderButton('underlined', 'format_underlined')}
                 {this.renderButton('code', 'code')}
-                <div name='paragraph' active={true} onClick={() => this.addBlock(this.state, 'B')}>
+                <button name='paragraph' active={true} onClick={() => this.addBlock(this.state, 'B')}>
                     Add paragraph B
-                </div>
-                <div name='paragraph' active={true} onClick={() => this.addBlock(this.state, 'C')}>
+                </button>
+                <button name='paragraph' active={true} onClick={() => this.addBlock(this.state, 'C')}>
                     Add paragraph C
-                </div>
+                </button>
             </div>
         )
     }
@@ -264,11 +263,14 @@ class SyncingEditor extends React.Component {
  */
 
 class SyncingOperationsExample extends React.Component {
-    constructor() {
-        super()
-        this.conn1 = connect()
-        this.conn2 = connect()
+    constructor(props) {
+        super(props);
 
+        this.conn1 = connect((change) => {
+            if(this.one && !change.source  ) {
+                this.one.applyOperations(change.operations)
+            }
+        });
     }
     /**
      * Save a reference to editor `one`.
@@ -278,49 +280,6 @@ class SyncingOperationsExample extends React.Component {
 
     oneRef = (one) => {
         this.one = one
-        this.conn2.onOp((change) => {
-            this.one.applyOperations(change.operations)
-        })
-    }
-
-    /**
-     * Save a reference to editor `two`.
-     *
-     * @param {SyncingEditor} two
-     */
-
-    twoRef = (two) => {
-        this.two = two
-        this.conn1.onOp((change) => {
-            this.two.applyOperations(change.operations)
-        })
-    }
-
-
-
-
-    /**
-     * When editor one changes, send document-alterting operations to edtior two.
-     *
-     * @param {Array} operations
-     */
-
-    onOneChange = (change) => {
-        this.conn1.submit(change)
-        // const ops = change.operations.filter(o => o.type != 'set_selection' && o.type != 'set_state')
-        // setTimeout(() => this.two.applyOperations(ops), (1 + Math.random()) * 1000);
-    }
-
-    /**
-     * When editor two changes, send document-alterting operations to edtior one.
-     *
-     * @param {Array} operations
-     */
-
-    onTwoChange = (change) => {
-        this.conn2.submit(change)
-        // const ops = change.operations.filter(o => o.type != 'set_selection' && o.type != 'set_state')
-        // this.one.applyOperations(ops)
     }
 
     /**
@@ -334,19 +293,8 @@ class SyncingOperationsExample extends React.Component {
             <div>
                 <SyncingEditor
                     ref={this.oneRef}
-                    onChange={this.onOneChange}
+                    onChange={this.conn1.submit('User 1')}
 
-                />
-                <div
-                    style={{
-                        height: '20px',
-                        backgroundColor: '#eee',
-                        margin: '20px -20px',
-                    }}
-                />
-                <SyncingEditor
-                    ref={this.twoRef}
-                    onChange={this.onTwoChange}
                 />
             </div>
         )

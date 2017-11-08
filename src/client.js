@@ -1,53 +1,65 @@
 import sharedb from 'sharedb/lib/client';
 
-import { toSlateOperations, toShareDBOperations } from './toSlateOperations';
+import { toShareDBOperations, toSlateOperations } from './toSlateOperations';
+
+function createDelayedSocket(delay) {
+    const DelayedWebsocket = WebSocket;
+
+    DelayedWebsocket.prototype.oldSend = DelayedWebsocket.prototype.send;
+    DelayedWebsocket.prototype.send = function(data) {
+        console.log("Send after" + delay + "ms");
+        var sock = this;
+        setTimeout(function () {
+            WebSocket.prototype.oldSend.apply(sock, [data]);
+        }, delay);
+    };
+
+    return DelayedWebsocket;
+}
 
 
-
-
-const connect = () => {
+const connect = (callback) => {
     const url = 'ws://' + window.location.host;
-    const socket = new WebSocket(url);
-    const connection = new sharedb.Connection(socket);
-    // connection.debug = true;
+    var delay = 0;
+    if(typeof URL !== 'undefined') {
+        delay = parseInt(new URL(window.location.href).searchParams.get("delay"));
+    }
 
-    window.disconnect = function() {
+    const SlowSocket = createDelayedSocket(delay);
+    const socket = new SlowSocket(url);
+
+    const connection = new sharedb.Connection(socket);
+    connection.debug = true;
+
+    window.disconnect = function () {
         connection.close();
     };
-    window.connect = function() {
-        var socket = new WebSocket('ws://' + window.location.host);
+    window.connect = function () {
+        var socket = new SlowSocket('ws://' + window.location.host);
         connection.bindToSocket(socket);
     };
 
-    function fetchDoc() {
-        const doc = connection.get('articles', 'article1');
-        return new Promise((resolve, reject) => {
-            doc.fetch((err) => {
-                if (err) reject(err);
-                resolve(doc);
-            })
-        })
-    }
+    const doc = connection.get('articles', 'article1');
+    doc.subscribe((error) => {
+        if(error) console.error(error);
+        doc.on('op', (ops, source) => {
+            const operations = ops.map(toSlateOperations);
+            callback({ operations, source });
+        });
+    });
+
     return {
-        close() {
-            connection.close();
-        },
-        onOp(operationDone) {
-            fetchDoc()
-                .then(doc => doc.on('op', (ops, source) => {
-                    const operations = ops.map(toSlateOperations);
-                    operationDone({ operations, source });
-                    }
-                ))
-        },
-        submit(change) {
-            const zeroJsonOps = change.operations.map(operation => toShareDBOperations({ operation }));
-            fetchDoc()
-                .then(doc => {
-                    doc.submitOp(zeroJsonOps, { source: true }, console.error)
-                });
+        submit(source) {
+            return (change) => {
+                const zeroJsonOps = change.operations.map(operation => toShareDBOperations({ operation }));
+
+                doc.submitOp(zeroJsonOps, { source }, (err) => {
+                    if(err) console.error(err);
+                })
+            }
         },
     }
+
 };
 
 
