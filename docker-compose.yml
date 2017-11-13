@@ -1,0 +1,52 @@
+version: "3"
+services:
+  webapp1:
+    build:
+      context: ./
+      args:
+        - http_proxy
+        - https_proxy
+    working_dir: /app
+    volumes:
+      - "./:/app"
+      - /app/node_modules
+    links:
+       - redis
+    environment:
+      - MONGO_URL=mongodb://mongodb:27017/app_development
+      - REDIS_URL=redis://redis:6379
+      - no_proxy=mongodb,redis,127.0.0.1
+    ports:
+      - "8081:8080"
+  webapp2:
+      build:
+        context: ./
+        args:
+          - http_proxy
+          - https_proxy
+      working_dir: /app
+      volumes:
+        - "./:/app"
+        - /app/node_modules
+      links:
+         - redis
+      environment:
+        - REDIS_URL=redis://redis:6379
+        - MONGO_URL=mongodb://mongodb:27017/app_development
+        - no_proxy=mongodb,redis,127.0.0.1
+      ports:
+        - "8082:8080"
+  mongodb:
+      image: mongo:latest
+      container_name: "mongodb"
+      environment:
+        - MONGO_DATA_DIR=/data/db
+        - MONGO_LOG_DIR=/dev/null
+      volumes:
+        - ./data/db:/data/db
+      ports:
+          - "27017:27017"
+      command: mongod --smallfiles --logpath=/dev/null # --quiet
+  redis:
+      image: redis:alpine
+

@@ -3,6 +3,7 @@ const express = require( 'express');
 const ShareDB = require( 'sharedb');
 const WebSocket = require( 'ws');
 const WebSocketJSONStream = require( 'websocket-json-stream');
+const redis = require("redis");
 
 
 const initialStateJS = {
@@ -13,7 +14,20 @@ const initialStateJS = {
     }
 };
 
-const backend = new ShareDB();
+const mongourl = process.env.MONGO_URL;
+const redisurl = process.env.REDIS_URL;
+const db = require('sharedb-mongo')(mongourl);
+const redisClient = redis.createClient({url: redisurl, port: 6379, host: 'redis'});
+redisClient.on('error', function (er) {
+    console.trace('Here I am');
+    console.error(er.stack);
+});
+const redisPubsub = require('sharedb-redis-pubsub')(redisClient); // Redis client being an existing redis client connection
+
+var backend = new ShareDB({
+    db: db,  // db would be your mongo db or other storage location
+    pubsub: redisPubsub
+});
 createDoc(startServer);
 
 // Create initial document then fire callback
